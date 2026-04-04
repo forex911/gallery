@@ -535,6 +535,56 @@ body {
 .pin:hover .pin-save { opacity: 1; }
 .pin-save:hover { background: var(--accent-hover); }
 
+/* Pinterest Style Mobile Info */
+.pin-info {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .pin-overlay, .pin-save { display: none !important; }
+
+  .pin {
+    background: transparent;
+    box-shadow: none;
+  }
+  
+  .pin:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .pin-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 4px 12px;
+  }
+
+  .pin-info-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+  }
+
+  .pin-info-more {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+    padding: 2px 8px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
 /* ─── Lightbox ─── */
 .lightbox {
   display: none; position: fixed; inset: 0; z-index: 1000;

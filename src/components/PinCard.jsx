@@ -9,34 +9,13 @@ import { fmtSize, getExt } from '../utils/helpers';
 const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave, isSaved }) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
-  const [inView, setInView] = useState(false);
   const [aspectRatio, setAspectRatio] = useState(pin.aspectRatio || (pin.isOther ? 1 : 4/3));
   const cardRef = useRef(null);
   const videoRef = useRef(null);
 
-  // Lazy load: only load image src when card scrolls near viewport
-  useEffect(() => {
-    if (pin.isVideo || pin.isOther) {
-      setInView(true);
-      return;
-    }
+  // We rely entirely on <img loading="lazy"> to natively handle decoding. 
+  // Native virtualization from masonic handles mounting optimally.
 
-    const el = cardRef.current;
-    if (!el) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setInView(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: '600px 0px', threshold: 0 }
-    );
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [pin.isVideo]);
 
   const handleMouseEnter = useCallback(() => {
     if (videoRef.current) videoRef.current.play().catch(() => {});
@@ -111,7 +90,7 @@ const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave,
             )}
 
             {/* Image — fades + scales in smoothly */}
-            {inView && !imgError && (
+            {!imgError && (
               <img
                 src={pin.thumbSrc || pin.src}
                 alt={pin.name}
@@ -125,6 +104,7 @@ const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave,
         )}
       </div>
 
+      {/* Desktop Overlay */}
       <div className="pin-overlay">
         <div className="pin-name">{pin.name}</div>
         <div className="pin-size">{sizeText}</div>
@@ -139,6 +119,21 @@ const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave,
       >
         {isSaved ? 'Saved' : 'Save'}
       </button>
+
+      {/* Mobile Info Block (Pinterest Style) */}
+      <div className="pin-info">
+        <div className="pin-info-title">{pin.name}</div>
+        <button 
+          className="pin-info-more"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSave(pin._idx);
+          }}
+          title={isSaved ? "Saved" : "Save"}
+        >
+          {isSaved ? '★' : '···'}
+        </button>
+      </div>
     </div>
   );
 });
