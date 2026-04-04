@@ -106,21 +106,34 @@ export async function fetchDriveFolderFiles(folderId) {
         html = await response.text();
       }
     } catch {
-      // Try via CORS proxies
+      // Try via self-hosted Vercel API and reliable CORS proxies
       const proxies = [
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(embedUrl)}`,
-        `https://corsproxy.io/?${encodeURIComponent(embedUrl)}`,
+        { url: `/api/drive?id=${folderId}`, type: 'text' }, // Self-hosted Serverless Function (Vercel)
+        { url: `https://api.allorigins.win/get?url=${encodeURIComponent(embedUrl)}`, type: 'json' },
+        { url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(embedUrl)}`, type: 'text' },
       ];
 
-      for (const proxyUrl of proxies) {
+      for (const proxy of proxies) {
         try {
-          const response = await fetch(proxyUrl);
+          const response = await fetch(proxy.url);
           if (response.ok) {
-            html = await response.text();
-            break;
+            if (proxy.type === 'json') {
+              const data = await response.json();
+              if (data && data.contents) {
+                html = data.contents;
+                break;
+              }
+            } else {
+              const text = await response.text();
+              // Basic check to ensure it's not a proxy error page
+              if (text && !text.includes('Proxy Error')) {
+                html = text;
+                break;
+              }
+            }
           }
         } catch {
-          continue;
+          continue; // Try the next proxy in the fallback array
         }
       }
     }
