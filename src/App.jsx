@@ -109,7 +109,6 @@ export default function App() {
       {hasPins && (
         <>
           <GalleryGrid
-            key={`${state.filter}-${state.sort}-${state.search}`}
             filteredPins={filteredPins}
             savedSet={state.savedSet}
             onOpenLightbox={openLightbox}

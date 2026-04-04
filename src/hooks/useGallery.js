@@ -13,20 +13,24 @@ import {
 } from '../utils/helpers';
 
 // ═══════════════════════════════════════════════════════
-//  Gallery State Management — Performance Optimized
+//  Gallery State Management — Performance Optimized v2
 //
 //  Key optimizations for 5000+ files:
 //  1. Pins stored in a mutable ref (avoids O(n²) array copying)
 //  2. Reducer tracks a version counter to trigger re-renders
-//  3. filteredPins uses direct filter (no .map object allocation)
-//  4. Single-pass stats computation
-//  5. Batch size 500 for local files (createObjectURL is cheap)
+//  3. filteredPins reuses pin objects (no allocation)
+//  4. Pin objects have `id` set at creation (Masonic key)
+//  5. Single-pass stats computation
+//  6. Batch size 500 for local files
 // ═══════════════════════════════════════════════════════
 
-const PROCESS_BATCH = 500; // Files per idle callback batch (up from 80)
+const PROCESS_BATCH = 500;
+
+// Global incrementing ID for pin objects — used as Masonic `id` field
+let nextPinId = 0;
 
 const initialState = {
-  pinsVersion: 0,       // Incremented on pin changes to trigger useMemo
+  pinsVersion: 0,
   filter: 'all',
   search: '',
   sort: 'default',
@@ -71,30 +75,24 @@ function galleryReducer(state, action) {
 export function useGallery() {
   const [state, dispatch] = useReducer(galleryReducer, initialState);
   
-  // Mutable pins array — avoids O(n²) spread copying in reducer
   const pinsRef = useRef([]);
   const objectUrlsRef = useRef([]);
   const shuffleSeedRef = useRef(null);
 
-  // Cleanup object URLs on unmount
   useEffect(() => {
     return () => {
       objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     };
   }, []);
 
-  // Reset shuffle seed when sort mode changes to 'random'
   useEffect(() => {
     if (state.sort === 'random') {
       shuffleSeedRef.current = Date.now();
     }
   }, [state.sort, state.pinsVersion]);
 
-  // Expose pins array length for consumers (avoids passing the whole array)
-  const pinsLength = pinsRef.current.length;
-
   // ─── Filtered + Searched + Sorted pins (memoized) ───
-  // No .map() object allocation — pins already have _idx set at creation time
+  // Pin objects already have `id` and `_idx` set at creation — NO mapping needed
   const filteredPins = useMemo(() => {
     const pins = pinsRef.current;
     const { filter, search, sort } = state;
@@ -107,7 +105,6 @@ export function useGallery() {
       return matchFilter && matchSearch;
     });
 
-    // Apply sorting
     switch (sort) {
       case 'name-asc':
         result = result.slice().sort((a, b) =>
@@ -153,13 +150,13 @@ export function useGallery() {
     const startIdx = pinsRef.current.length;
     for (let i = 0; i < newPins.length; i++) {
       newPins[i]._idx = startIdx + i;
+      newPins[i].id = nextPinId++; // Stable Masonic id
     }
-    // Push in-place — no array copy
     pinsRef.current.push(...newPins);
     dispatch({ type: 'PINS_CHANGED' });
   }, []);
 
-  // ─── Handle local file uploads (batched, uses createObjectURL) ───
+  // ─── Handle local file uploads ───
   const handleFiles = useCallback((fileList) => {
     const media = Array.from(fileList);
     if (!media.length) return;
@@ -188,7 +185,6 @@ export function useGallery() {
           isImage: isImg,
           isOther: !isVid && !isImg,
           isUrl: false,
-          // _idx will be set by appendPins
         });
         loaded++;
       }
@@ -212,7 +208,7 @@ export function useGallery() {
     processBatch(0);
   }, [appendPins]);
 
-  // ─── Handle URL imports (with Google Drive folder support) ───
+  // ─── Handle URL imports ───
   const loadFromUrls = useCallback((rawText) => {
     const urls = rawText
       .split('\n')
@@ -256,46 +252,30 @@ export function useGallery() {
       }
     }
 
-    // ─── Process Google Drive folder URLs ───
     folderUrls.forEach(async (folderUrl) => {
       const folderId = extractDriveFolderId(folderUrl);
-      if (!folderId) {
-        failed++;
-        updateStatus();
-        return;
-      }
+      if (!folderId) { failed++; updateStatus(); return; }
 
-      dispatch({
-        type: 'SET_URL_STATUS',
-        payload: { text: `Scanning Google Drive folder...`, isError: false },
-      });
+      dispatch({ type: 'SET_URL_STATUS', payload: { text: `Scanning Google Drive folder...`, isError: false } });
 
       try {
         const files = await fetchDriveFolderFiles(folderId);
-
         if (files.length === 0) {
           dispatch({
             type: 'SET_URL_STATUS',
             payload: {
-              text: `Could not access folder contents. Make sure the folder is set to "Anyone with the link" and contains viewable files. Try sharing individual file links instead.`,
+              text: `Could not access folder contents. Make sure the folder is set to "Anyone with the link" and contains viewable files.`,
               isError: true,
             },
           });
-          failed++;
-          updateStatus();
-          return;
+          failed++; updateStatus(); return;
         }
 
         totalExpected = totalExpected - 1 + files.length;
-
-        dispatch({
-          type: 'SET_URL_STATUS',
-          payload: { text: `Found ${files.length} file(s) in folder. Loading...`, isError: false },
-        });
+        dispatch({ type: 'SET_URL_STATUS', payload: { text: `Found ${files.length} file(s) in folder. Loading...`, isError: false } });
 
         const pins = files.map((file) => {
           const isVid = isVideo(file.name);
-          const isImg = !isVid;
           return {
             src: file.src,
             thumbSrc: file.thumbSrc || file.src,
@@ -304,34 +284,25 @@ export function useGallery() {
             type: isVid ? 'video/url' : 'image/url',
             isUrl: true,
             isVideo: isVid,
-            isImage: isImg,
+            isImage: !isVid,
             isOther: false,
           };
         });
 
         appendPins(pins);
         loaded += files.length;
-
-        dispatch({
-          type: 'SET_URL_STATUS',
-          payload: { text: `Added ${files.length} file(s) from folder.`, isError: false },
-        });
+        dispatch({ type: 'SET_URL_STATUS', payload: { text: `Added ${files.length} file(s) from folder.`, isError: false } });
         updateStatus();
       } catch (err) {
         console.error('Drive folder error:', err);
         dispatch({
           type: 'SET_URL_STATUS',
-          payload: {
-            text: `Failed to access folder. Ensure the folder is public, or paste individual file share links instead.`,
-            isError: true,
-          },
+          payload: { text: `Failed to access folder. Ensure the folder is public.`, isError: true },
         });
-        failed++;
-        updateStatus();
+        failed++; updateStatus();
       }
     });
 
-    // ─── Process individual file URLs ───
     fileUrls.forEach((rawUrl) => {
       const name = getFilenameFromUrl(rawUrl);
       const isVid = isVideo(name) || isVideo(rawUrl);
@@ -343,8 +314,7 @@ export function useGallery() {
         video.preload = 'metadata';
         video.onloadedmetadata = () => {
           appendPins([{ src, thumbSrc: src, name, size: 0, type: 'video/url', isUrl: true, isVideo: true, isImage: false, isOther: false }]);
-          loaded++;
-          updateStatus();
+          loaded++; updateStatus();
         };
         video.onerror = () => { failed++; updateStatus(); };
         video.src = src;
@@ -354,20 +324,16 @@ export function useGallery() {
           thumbSrc = src.replace('=w1600', '=w400');
         }
         const img = new Image();
-        if (!isDriveUrl(rawUrl)) {
-          img.crossOrigin = 'anonymous';
-        }
+        if (!isDriveUrl(rawUrl)) { img.crossOrigin = 'anonymous'; }
         img.onload = () => {
           appendPins([{ src, thumbSrc, name, size: 0, type: 'image/url', isUrl: true, isVideo: false, isImage: true, isOther: false }]);
-          loaded++;
-          updateStatus();
+          loaded++; updateStatus();
         };
         img.onerror = () => { failed++; updateStatus(); };
         img.src = src;
       } else {
         appendPins([{ src, name, size: 0, type: 'file/url', isUrl: true, isVideo: false, isImage: false, isOther: true }]);
-        loaded++;
-        updateStatus();
+        loaded++; updateStatus();
       }
     });
 

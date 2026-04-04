@@ -352,10 +352,8 @@ body {
   position: relative; cursor: zoom-in;
   background: var(--bg-primary);
   box-shadow: var(--shadow-card);
-  transition: transform var(--transition), box-shadow var(--transition);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   contain: layout style paint;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 250px;
 }
 
 .pin:hover {
@@ -384,19 +382,13 @@ body {
   display: block;
   border-radius: var(--radius-md);
   opacity: 0;
-  transform: scale(1.04);
-  filter: blur(8px);
-  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-              transform 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-              filter 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.35s ease;
   position: relative;
   z-index: 1;
 }
 
 .pin-img.loaded {
   opacity: 1;
-  transform: scale(1);
-  filter: blur(0px);
 }
 
 .pin-other-file {
