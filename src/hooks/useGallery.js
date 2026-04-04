@@ -261,16 +261,18 @@ export function useGallery() {
         // Add all found files directly — PinCard handles load errors gracefully
         const pins = files.map((file) => {
           const isVid = isVideo(file.name);
-          const isImg = isImage(file.name);
+          // Drive lh3 proxies serve image thumbnails for ALL files automatically!
+          // We assume image if it's not explicitly a video to regain full preview support.
+          const isImg = !isVid;
           return {
             src: file.src,
             name: file.name,
             size: 0,
-            type: isVid ? 'video/url' : isImg ? 'image/url' : 'file/url',
+            type: isVid ? 'video/url' : 'image/url',
             isUrl: true,
             isVideo: isVid,
             isImage: isImg,
-            isOther: !isVid && !isImg,
+            isOther: false,
           };
         });
 
@@ -300,7 +302,8 @@ export function useGallery() {
     fileUrls.forEach((rawUrl) => {
       const name = getFilenameFromUrl(rawUrl);
       const isVid = isVideo(name) || isVideo(rawUrl);
-      const isImg = isImage(name) || isImage(rawUrl);
+      // Drive URLs automatically resolve to an image thumbnail if they aren't parsed as a video stream
+      const isImg = isImage(name) || isImage(rawUrl) || isDriveUrl(rawUrl);
       const src = convertDriveUrl(rawUrl, isVid);
 
       if (isVid) {
