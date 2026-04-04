@@ -66,8 +66,8 @@ export function convertDriveUrl(url, isVideoFile = false) {
  * Build a direct-access URL for a Google Drive file.
  * Uses lh3.googleusercontent.com which is CORS-friendly.
  */
-export function driveDirectUrl(fileId) {
-  return `https://lh3.googleusercontent.com/d/${fileId}=w1600`;
+export function driveDirectUrl(fileId, size = 'w1600') {
+  return `https://lh3.googleusercontent.com/d/${fileId}=${size}`;
 }
 
 /**
@@ -156,7 +156,8 @@ export async function fetchDriveFolderFiles(folderId) {
           seen.add(m[1]);
           files.push({
             id: m[1],
-            src: driveDirectUrl(m[1]),
+            src: driveDirectUrl(m[1], 'w1600'),
+            thumbSrc: driveDirectUrl(m[1], 'w400'),
             name: `drive-${m[1].slice(0, 8)}`,
           });
         }

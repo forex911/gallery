@@ -266,6 +266,7 @@ export function useGallery() {
           const isImg = !isVid;
           return {
             src: file.src,
+            thumbSrc: file.thumbSrc || file.src,
             name: file.name,
             size: 0,
             type: isVid ? 'video/url' : 'image/url',
@@ -312,7 +313,7 @@ export function useGallery() {
         video.onloadedmetadata = () => {
           dispatch({
             type: 'ADD_PINS',
-            payload: [{ src, name, size: 0, type: 'video/url', isUrl: true, isVideo: true, isImage: false, isOther: false }],
+            payload: [{ src, thumbSrc: src, name, size: 0, type: 'video/url', isUrl: true, isVideo: true, isImage: false, isOther: false }],
           });
           loaded++;
           updateStatus();
@@ -320,6 +321,10 @@ export function useGallery() {
         video.onerror = () => { failed++; updateStatus(); };
         video.src = src;
       } else if (isImg) {
+        let thumbSrc = src;
+        if (src.includes('lh3.googleusercontent.com')) {
+          thumbSrc = src.replace('=w1600', '=w400');
+        }
         const img = new Image();
         // Only set crossOrigin for non-Drive URLs
         if (!isDriveUrl(rawUrl)) {
@@ -328,7 +333,7 @@ export function useGallery() {
         img.onload = () => {
           dispatch({
             type: 'ADD_PINS',
-            payload: [{ src, name, size: 0, type: 'image/url', isUrl: true, isVideo: false, isImage: true, isOther: false }],
+            payload: [{ src, thumbSrc, name, size: 0, type: 'image/url', isUrl: true, isVideo: false, isImage: true, isOther: false }],
           });
           loaded++;
           updateStatus();

@@ -83,6 +83,7 @@ const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave,
             <video
               ref={videoRef}
               src={pin.src}
+              poster={pin.thumbSrc && pin.thumbSrc !== pin.src ? pin.thumbSrc : undefined}
               muted
               loop
               playsInline
@@ -112,7 +113,7 @@ const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave,
             {/* Image — fades + scales in smoothly */}
             {inView && !imgError && (
               <img
-                src={pin.src}
+                src={pin.thumbSrc || pin.src}
                 alt={pin.name}
                 loading="lazy"
                 className={`pin-img${imgLoaded ? ' loaded' : ''}`}
