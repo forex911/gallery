@@ -41,8 +41,9 @@ export default function App() {
   );
 
   // Stats
-  const photoCount = useMemo(() => state.pins.filter((p) => !p.isVideo).length, [state.pins]);
+  const photoCount = useMemo(() => state.pins.filter((p) => p.isImage !== false && !p.isVideo && !p.isOther).length, [state.pins]);
   const videoCount = useMemo(() => state.pins.filter((p) => p.isVideo).length, [state.pins]);
+  const fileCount = useMemo(() => state.pins.filter((p) => p.isOther).length, [state.pins]);
 
   // Lightbox handlers
   const openLightbox = useCallback(
@@ -97,6 +98,7 @@ export default function App() {
           totalPins={state.pins.length}
           photoCount={photoCount}
           videoCount={videoCount}
+          fileCount={fileCount}
           activeFilter={state.filter}
           onFilter={setFilter}
           activeSort={state.sort}

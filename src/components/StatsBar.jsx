@@ -7,10 +7,14 @@ const SORT_OPTIONS = [
   { value: 'random', label: 'Shuffle' },
 ];
 
-export default function StatsBar({ totalPins, photoCount, videoCount, activeFilter, onFilter, activeSort, onSort }) {
+export default function StatsBar({ totalPins, photoCount, videoCount, fileCount, activeFilter, onFilter, activeSort, onSort }) {
   let text = totalPins.toLocaleString() + ' items';
-  if (photoCount > 0 && videoCount > 0) {
-    text += `  (${photoCount.toLocaleString()} photos, ${videoCount.toLocaleString()} videos)`;
+  const parts = [];
+  if (photoCount > 0) parts.push(`${photoCount.toLocaleString()} photos`);
+  if (videoCount > 0) parts.push(`${videoCount.toLocaleString()} videos`);
+  if (fileCount > 0) parts.push(`${fileCount.toLocaleString()} files`);
+  if (parts.length > 0) {
+    text += `  (${parts.join(', ')})`;
   }
 
   return (

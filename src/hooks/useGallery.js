@@ -123,9 +123,7 @@ export function useGallery() {
 
   // ─── Handle local file uploads (batched, uses createObjectURL) ───
   const handleFiles = useCallback((fileList) => {
-    const media = Array.from(fileList).filter(
-      (f) => f.type.startsWith('image/') || f.type.startsWith('video/')
-    );
+    const media = Array.from(fileList);
     if (!media.length) return;
 
     const total = media.length;
@@ -141,12 +139,16 @@ export function useGallery() {
         const file = media[i];
         const url = URL.createObjectURL(file);
         objectUrlsRef.current.push(url);
+        const isVid = file.type.startsWith('video/') || isVideo(file.name);
+        const isImg = file.type.startsWith('image/') || isImage(file.name);
         batch.push({
           src: url,
           name: file.name,
           size: file.size,
           type: file.type,
-          isVideo: file.type.startsWith('video/'),
+          isVideo: isVid,
+          isImage: isImg,
+          isOther: !isVid && !isImg,
           isUrl: false,
         });
         loaded++;
@@ -257,14 +259,20 @@ export function useGallery() {
         });
 
         // Add all found files directly — PinCard handles load errors gracefully
-        const pins = files.map((file) => ({
-          src: file.src,
-          name: file.name,
-          size: 0,
-          type: isVideo(file.name) ? 'video/url' : 'image/url',
-          isUrl: true,
-          isVideo: isVideo(file.name),
-        }));
+        const pins = files.map((file) => {
+          const isVid = isVideo(file.name);
+          const isImg = isImage(file.name);
+          return {
+            src: file.src,
+            name: file.name,
+            size: 0,
+            type: isVid ? 'video/url' : isImg ? 'image/url' : 'file/url',
+            isUrl: true,
+            isVideo: isVid,
+            isImage: isImg,
+            isOther: !isVid && !isImg,
+          };
+        });
 
         dispatch({ type: 'ADD_PINS', payload: pins });
         loaded += files.length;
@@ -293,6 +301,7 @@ export function useGallery() {
       const src = convertDriveUrl(rawUrl);
       const name = getFilenameFromUrl(rawUrl);
       const isVid = isVideo(name) || isVideo(rawUrl);
+      const isImg = isImage(name) || isImage(rawUrl);
 
       if (isVid) {
         const video = document.createElement('video');
@@ -300,14 +309,14 @@ export function useGallery() {
         video.onloadedmetadata = () => {
           dispatch({
             type: 'ADD_PINS',
-            payload: [{ src, name, size: 0, type: 'video/url', isUrl: true, isVideo: true }],
+            payload: [{ src, name, size: 0, type: 'video/url', isUrl: true, isVideo: true, isImage: false, isOther: false }],
           });
           loaded++;
           updateStatus();
         };
         video.onerror = () => { failed++; updateStatus(); };
         video.src = src;
-      } else {
+      } else if (isImg) {
         const img = new Image();
         // Only set crossOrigin for non-Drive URLs
         if (!isDriveUrl(rawUrl)) {
@@ -316,13 +325,20 @@ export function useGallery() {
         img.onload = () => {
           dispatch({
             type: 'ADD_PINS',
-            payload: [{ src, name, size: 0, type: 'image/url', isUrl: true, isVideo: false }],
+            payload: [{ src, name, size: 0, type: 'image/url', isUrl: true, isVideo: false, isImage: true, isOther: false }],
           });
           loaded++;
           updateStatus();
         };
         img.onerror = () => { failed++; updateStatus(); };
         img.src = src;
+      } else {
+        dispatch({
+          type: 'ADD_PINS',
+          payload: [{ src, name, size: 0, type: 'file/url', isUrl: true, isVideo: false, isImage: false, isOther: true }],
+        });
+        loaded++;
+        updateStatus();
       }
     });
 

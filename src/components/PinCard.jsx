@@ -1,5 +1,5 @@
 import { memo, useRef, useState, useEffect, useCallback } from 'react';
-import { fmtSize } from '../utils/helpers';
+import { fmtSize, getExt } from '../utils/helpers';
 
 /**
  * PinCard — Individual gallery item.
@@ -10,12 +10,13 @@ const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave,
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [inView, setInView] = useState(false);
+  const [aspectRatio, setAspectRatio] = useState(pin.aspectRatio || (pin.isOther ? 1 : 4/3));
   const cardRef = useRef(null);
   const videoRef = useRef(null);
 
   // Lazy load: only load image src when card scrolls near viewport
   useEffect(() => {
-    if (pin.isVideo) {
+    if (pin.isVideo || pin.isOther) {
       setInView(true);
       return;
     }
@@ -48,6 +49,19 @@ const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave,
     }
   }, []);
 
+  const handleImgLoad = useCallback((e) => {
+    const ratio = e.target.naturalWidth / e.target.naturalHeight;
+    pin.aspectRatio = ratio;
+    setAspectRatio(ratio);
+    setImgLoaded(true);
+  }, [pin]);
+
+  const handleVideoLoad = useCallback((e) => {
+    const ratio = e.target.videoWidth / e.target.videoHeight;
+    pin.aspectRatio = ratio;
+    setAspectRatio(ratio);
+  }, [pin]);
+
   const handleImgError = useCallback(() => {
     setImgLoaded(true);
     setImgError(true);
@@ -63,44 +77,52 @@ const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave,
       onMouseEnter={pin.isVideo ? handleMouseEnter : undefined}
       onMouseLeave={pin.isVideo ? handleMouseLeave : undefined}
     >
-      {pin.isVideo ? (
-        <>
-          <video
-            ref={videoRef}
-            src={pin.src}
-            muted
-            loop
-            playsInline
-            preload="metadata"
-          />
-          <div className="pin-badge">Video</div>
-        </>
-      ) : (
-        <div className="pin-media-wrap">
-          {/* Shimmer placeholder — fades out after image loads */}
-          <div className={`pin-placeholder${imgLoaded ? ' hide' : ''}`} />
-
-          {/* Error state */}
-          {imgError && (
-            <div className="pin-error">
-              <div className="pin-error-icon">×</div>
-              <div className="pin-error-text">Could not load</div>
-            </div>
-          )}
-
-          {/* Image — fades + scales in smoothly */}
-          {inView && !imgError && (
-            <img
+      <div className="pin-media-wrap" style={{ aspectRatio: aspectRatio }}>
+        {pin.isVideo ? (
+          <>
+            <video
+              ref={videoRef}
               src={pin.src}
-              alt={pin.name}
-              loading="lazy"
-              className={`pin-img${imgLoaded ? ' loaded' : ''}`}
-              onLoad={() => setImgLoaded(true)}
-              onError={handleImgError}
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              onLoadedMetadata={handleVideoLoad}
             />
-          )}
-        </div>
-      )}
+            <div className="pin-badge">Video</div>
+          </>
+        ) : pin.isOther ? (
+          <div className="pin-other-file">
+            <div className="file-icon">📄</div>
+            <div className="file-ext">{getExt(pin.name).toUpperCase() || 'FILE'}</div>
+          </div>
+        ) : (
+          <>
+            {/* Shimmer placeholder — fades out after image loads */}
+            <div className={`pin-placeholder${imgLoaded ? ' hide' : ''}`} />
+
+            {/* Error state */}
+            {imgError && (
+              <div className="pin-error">
+                <div className="pin-error-icon">×</div>
+                <div className="pin-error-text">Could not load</div>
+              </div>
+            )}
+
+            {/* Image — fades + scales in smoothly */}
+            {inView && !imgError && (
+              <img
+                src={pin.src}
+                alt={pin.name}
+                loading="lazy"
+                className={`pin-img${imgLoaded ? ' loaded' : ''}`}
+                onLoad={handleImgLoad}
+                onError={handleImgError}
+              />
+            )}
+          </>
+        )}
+      </div>
 
       <div className="pin-overlay">
         <div className="pin-name">{pin.name}</div>
