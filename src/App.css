@@ -354,7 +354,8 @@ body {
   box-shadow: var(--shadow-card);
   transition: transform var(--transition), box-shadow var(--transition);
   contain: layout style paint;
-  will-change: transform;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 250px;
 }
 
 .pin:hover {
@@ -433,6 +434,7 @@ body {
 .pin-placeholder.hide {
   opacity: 0;
   pointer-events: none;
+  animation: none;
 }
 
 .pin-placeholder::after {

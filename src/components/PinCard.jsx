@@ -1,29 +1,38 @@
-import { memo, useRef, useState, useEffect, useCallback } from 'react';
+import { memo, useRef, useState, useCallback } from 'react';
 import { fmtSize, getExt } from '../utils/helpers';
 
 /**
  * PinCard — Individual gallery item.
- * Wrapped in React.memo to prevent re-renders when parent list updates.
- * Uses IntersectionObserver for lazy loading + smooth fade-in.
+ * 
+ * Performance optimizations:
+ * - React.memo prevents re-renders when parent list updates
+ * - Reads savedSet/callbacks from refs (avoids prop-driven re-renders)
+ * - aspectRatio stored in local state (no mutation of data prop)
+ * - img decoding="async" for non-blocking image decode
  */
-const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave, isSaved }) {
+const PinCard = memo(function PinCard({ data: pin, savedSetRef, onOpenLightboxRef, onToggleSaveRef }) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [aspectRatio, setAspectRatio] = useState(pin.aspectRatio || (pin.isOther ? 1 : 4/3));
-  const cardRef = useRef(null);
   const videoRef = useRef(null);
 
-  // We rely entirely on <img loading="lazy"> to natively handle decoding. 
-  // Native virtualization from masonic handles mounting optimally.
+  const isSaved = !!(savedSetRef.current[pin._idx]);
 
+  const handleClick = useCallback(() => {
+    onOpenLightboxRef.current(pin._idx);
+  }, [pin._idx, onOpenLightboxRef]);
+
+  const handleSave = useCallback((e) => {
+    e.stopPropagation();
+    onToggleSaveRef.current(pin._idx);
+  }, [pin._idx, onToggleSaveRef]);
 
   const handleMouseEnter = useCallback(() => {
     if (videoRef.current) {
-      videoRef.current.muted = false; // Attempt to play with audio
+      videoRef.current.muted = false;
       const playPromise = videoRef.current.play();
       if (playPromise !== undefined) {
         playPromise.catch((err) => {
-          // If playback with audio is blocked by the browser, fallback to muted
           if (err.name === 'NotAllowedError') {
             videoRef.current.muted = true;
             videoRef.current.play().catch(() => {});
@@ -37,22 +46,20 @@ const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave,
     if (videoRef.current) {
       videoRef.current.pause();
       videoRef.current.currentTime = 0;
-      videoRef.current.muted = true; // reset
+      videoRef.current.muted = true;
     }
   }, []);
 
   const handleImgLoad = useCallback((e) => {
     const ratio = e.target.naturalWidth / e.target.naturalHeight;
-    pin.aspectRatio = ratio;
     setAspectRatio(ratio);
     setImgLoaded(true);
-  }, [pin]);
+  }, []);
 
   const handleVideoLoad = useCallback((e) => {
     const ratio = e.target.videoWidth / e.target.videoHeight;
-    pin.aspectRatio = ratio;
     setAspectRatio(ratio);
-  }, [pin]);
+  }, []);
 
   const handleImgError = useCallback(() => {
     setImgLoaded(true);
@@ -63,9 +70,8 @@ const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave,
 
   return (
     <div
-      ref={cardRef}
       className="pin"
-      onClick={() => onOpenLightbox(pin._idx)}
+      onClick={handleClick}
       onMouseEnter={pin.isVideo ? handleMouseEnter : undefined}
       onMouseLeave={pin.isVideo ? handleMouseLeave : undefined}
     >
@@ -102,12 +108,13 @@ const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave,
               </div>
             )}
 
-            {/* Image — fades + scales in smoothly */}
+            {/* Image — fades + scales in smoothly, decoding="async" for non-blocking decode */}
             {!imgError && (
               <img
                 src={pin.thumbSrc || pin.src}
                 alt={pin.name}
                 loading="lazy"
+                decoding="async"
                 className={`pin-img${imgLoaded ? ' loaded' : ''}`}
                 onLoad={handleImgLoad}
                 onError={handleImgError}
@@ -125,10 +132,7 @@ const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave,
 
       <button
         className="pin-save"
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleSave(pin._idx);
-        }}
+        onClick={handleSave}
       >
         {isSaved ? 'Saved' : 'Save'}
       </button>
@@ -138,10 +142,7 @@ const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave,
         <div className="pin-info-title">{pin.name}</div>
         <button 
           className="pin-info-more"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleSave(pin._idx);
-          }}
+          onClick={handleSave}
           title={isSaved ? "Saved" : "Save"}
         >
           {isSaved ? '★' : '···'}

@@ -1,14 +1,27 @@
-import { useMemo, useCallback, useState, useEffect } from 'react';
+import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { Masonry } from 'masonic';
 import PinCard from './PinCard';
 
 /**
  * GalleryGrid — Virtualized masonry layout using Masonic.
- * Only renders items visible in the viewport + a buffer.
- * Can handle 10,000+ items without performance degradation.
+ * 
+ * Performance optimizations for 5000+ items:
+ * - savedSet accessed via ref to avoid re-creating renderItem on every save toggle
+ * - Stable renderItem reference prevents Masonic from re-rendering all visible cells
+ * - overscanBy=3 reduces offscreen rendering overhead
  */
 export default function GalleryGrid({ filteredPins, savedSet, onOpenLightbox, onToggleSave }) {
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+
+  // Store savedSet in a ref so renderItem doesn't depend on it
+  const savedSetRef = useRef(savedSet);
+  savedSetRef.current = savedSet;
+
+  // Store callbacks in refs for stable renderItem
+  const onOpenLightboxRef = useRef(onOpenLightbox);
+  onOpenLightboxRef.current = onOpenLightbox;
+  const onToggleSaveRef = useRef(onToggleSave);
+  onToggleSaveRef.current = onToggleSave;
 
   useEffect(() => {
     let frameId;
@@ -27,37 +40,34 @@ export default function GalleryGrid({ filteredPins, savedSet, onOpenLightbox, on
 
   const gridConfig = useMemo(() => {
     if (windowWidth < 600) {
-      // Mobile Phones: Force 2 symmetrical columns (account for 12px lateral masonry padding)
       return { columnWidth: Math.max(120, (windowWidth - 24 - 10) / 2), columnGutter: 10 };
     } else if (windowWidth < 900) {
-      // Tablets
       return { columnWidth: 200, columnGutter: 14 };
     } else if (windowWidth >= 1600) {
-      // Ultra-wide 4k Displays
       return { columnWidth: 320, columnGutter: 24 };
     }
-    // Standard Desktops & Laptops
     return { columnWidth: 260, columnGutter: 16 };
   }, [windowWidth]);
 
-  // Masonic render function — receives { data, index, width }
+  // Stable render function — NO dependency on savedSet, onOpenLightbox, onToggleSave
+  // Uses refs internally so Masonic never invalidates the render function
   const renderItem = useCallback(
     ({ data }) => (
       <PinCard
         data={data}
-        onOpenLightbox={onOpenLightbox}
-        onToggleSave={onToggleSave}
-        isSaved={!!savedSet[data._idx]}
+        savedSetRef={savedSetRef}
+        onOpenLightboxRef={onOpenLightboxRef}
+        onToggleSaveRef={onToggleSaveRef}
       />
     ),
-    [savedSet, onOpenLightbox, onToggleSave]
+    [] // Empty deps = stable reference forever
   );
 
   // Masonic needs a stable items array with id fields
   const items = useMemo(() => {
     return filteredPins.map((pin) => ({
       ...pin,
-      id: pin._idx, // Masonic requires an `id` field
+      id: pin._idx,
     }));
   }, [filteredPins]);
 
@@ -70,7 +80,7 @@ export default function GalleryGrid({ filteredPins, savedSet, onOpenLightbox, on
         render={renderItem}
         columnGutter={gridConfig.columnGutter}
         columnWidth={gridConfig.columnWidth}
-        overscanBy={5}
+        overscanBy={3}
         role="grid"
       />
     </div>

@@ -13,28 +13,32 @@ import {
 } from '../utils/helpers';
 
 // ═══════════════════════════════════════════════════════
-//  Gallery State Management
+//  Gallery State Management — Performance Optimized
 //
-//  Central state: all pins, filter, search, sort, progress.
-//  Uses useReducer for predictable batch updates.
+//  Key optimizations for 5000+ files:
+//  1. Pins stored in a mutable ref (avoids O(n²) array copying)
+//  2. Reducer tracks a version counter to trigger re-renders
+//  3. filteredPins uses direct filter (no .map object allocation)
+//  4. Single-pass stats computation
+//  5. Batch size 500 for local files (createObjectURL is cheap)
 // ═══════════════════════════════════════════════════════
 
-const PROCESS_BATCH = 80; // Files per idle callback batch
+const PROCESS_BATCH = 500; // Files per idle callback batch (up from 80)
 
 const initialState = {
-  pins: [],             // Array of pin objects
-  filter: 'all',        // Current format filter
-  search: '',           // Search query
-  sort: 'default',      // Sort mode: 'default' | 'name-asc' | 'name-desc' | 'random'
-  savedSet: {},         // { [index]: true }
-  progress: null,       // { loaded, total } or null
-  urlStatus: null,      // { text, isError } or null
+  pinsVersion: 0,       // Incremented on pin changes to trigger useMemo
+  filter: 'all',
+  search: '',
+  sort: 'default',
+  savedSet: {},
+  progress: null,
+  urlStatus: null,
 };
 
 function galleryReducer(state, action) {
   switch (action.type) {
-    case 'ADD_PINS':
-      return { ...state, pins: [...state.pins, ...action.payload] };
+    case 'PINS_CHANGED':
+      return { ...state, pinsVersion: state.pinsVersion + 1 };
 
     case 'SET_FILTER':
       return { ...state, filter: action.payload };
@@ -66,6 +70,9 @@ function galleryReducer(state, action) {
 
 export function useGallery() {
   const [state, dispatch] = useReducer(galleryReducer, initialState);
+  
+  // Mutable pins array — avoids O(n²) spread copying in reducer
+  const pinsRef = useRef([]);
   const objectUrlsRef = useRef([]);
   const shuffleSeedRef = useRef(null);
 
@@ -76,26 +83,29 @@ export function useGallery() {
     };
   }, []);
 
-  // Reset shuffle seed when sort mode changes to 'random' or pin count changes
+  // Reset shuffle seed when sort mode changes to 'random'
   useEffect(() => {
     if (state.sort === 'random') {
       shuffleSeedRef.current = Date.now();
     }
-  }, [state.sort, state.pins.length]);
+  }, [state.sort, state.pinsVersion]);
+
+  // Expose pins array length for consumers (avoids passing the whole array)
+  const pinsLength = pinsRef.current.length;
 
   // ─── Filtered + Searched + Sorted pins (memoized) ───
+  // No .map() object allocation — pins already have _idx set at creation time
   const filteredPins = useMemo(() => {
-    const { pins, filter, search, sort } = state;
+    const pins = pinsRef.current;
+    const { filter, search, sort } = state;
     const q = search.toLowerCase();
 
-    let result = pins
-      .map((pin, idx) => ({ ...pin, _idx: idx }))
-      .filter((pin) => {
-        const ext = getExt(pin.name);
-        const matchFilter = filter === 'all' || ext === filter;
-        const matchSearch = !q || pin.name.toLowerCase().includes(q);
-        return matchFilter && matchSearch;
-      });
+    let result = pins.filter((pin) => {
+      const ext = getExt(pin.name);
+      const matchFilter = filter === 'all' || ext === filter;
+      const matchSearch = !q || pin.name.toLowerCase().includes(q);
+      return matchFilter && matchSearch;
+    });
 
     // Apply sorting
     switch (sort) {
@@ -113,13 +123,41 @@ export function useGallery() {
         result = shuffleArray(result);
         break;
       default:
-        // keep original order
         break;
     }
 
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.pins, state.filter, state.search, state.sort, shuffleSeedRef.current]);
+  }, [state.pinsVersion, state.filter, state.search, state.sort, shuffleSeedRef.current]);
+
+  // ─── Single-pass stats (memoized) ───
+  const stats = useMemo(() => {
+    const pins = pinsRef.current;
+    let photoCount = 0;
+    let videoCount = 0;
+    let fileCount = 0;
+
+    for (let i = 0, len = pins.length; i < len; i++) {
+      const p = pins[i];
+      if (p.isVideo) videoCount++;
+      else if (p.isOther) fileCount++;
+      else photoCount++;
+    }
+
+    return { total: pins.length, photoCount, videoCount, fileCount };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.pinsVersion]);
+
+  // ─── Helper: append pins to ref and bump version ───
+  const appendPins = useCallback((newPins) => {
+    const startIdx = pinsRef.current.length;
+    for (let i = 0; i < newPins.length; i++) {
+      newPins[i]._idx = startIdx + i;
+    }
+    // Push in-place — no array copy
+    pinsRef.current.push(...newPins);
+    dispatch({ type: 'PINS_CHANGED' });
+  }, []);
 
   // ─── Handle local file uploads (batched, uses createObjectURL) ───
   const handleFiles = useCallback((fileList) => {
@@ -150,11 +188,12 @@ export function useGallery() {
           isImage: isImg,
           isOther: !isVid && !isImg,
           isUrl: false,
+          // _idx will be set by appendPins
         });
         loaded++;
       }
 
-      dispatch({ type: 'ADD_PINS', payload: batch });
+      appendPins(batch);
       dispatch({ type: 'SET_PROGRESS', payload: { loaded, total } });
 
       if (end < total) {
@@ -164,7 +203,6 @@ export function useGallery() {
           setTimeout(() => processBatch(end), 16);
         }
       } else {
-        // Done — clear progress after a short delay
         setTimeout(() => {
           dispatch({ type: 'SET_PROGRESS', payload: null });
         }, 800);
@@ -172,7 +210,7 @@ export function useGallery() {
     }
 
     processBatch(0);
-  }, []);
+  }, [appendPins]);
 
   // ─── Handle URL imports (with Google Drive folder support) ───
   const loadFromUrls = useCallback((rawText) => {
@@ -182,11 +220,9 @@ export function useGallery() {
       .filter((l) => l.length > 0);
     if (!urls.length) return;
 
-    // Separate folder URLs from individual file URLs
     const folderUrls = urls.filter(isDriveFolderUrl);
     const fileUrls = urls.filter((u) => !isDriveFolderUrl(u));
 
-    // Track overall progress
     let totalExpected = fileUrls.length + (folderUrls.length > 0 ? 1 : 0);
     let loaded = 0;
     let failed = 0;
@@ -250,7 +286,6 @@ export function useGallery() {
           return;
         }
 
-        // Update total expected count
         totalExpected = totalExpected - 1 + files.length;
 
         dispatch({
@@ -258,11 +293,8 @@ export function useGallery() {
           payload: { text: `Found ${files.length} file(s) in folder. Loading...`, isError: false },
         });
 
-        // Add all found files directly — PinCard handles load errors gracefully
         const pins = files.map((file) => {
           const isVid = isVideo(file.name);
-          // Drive lh3 proxies serve image thumbnails for ALL files automatically!
-          // We assume image if it's not explicitly a video to regain full preview support.
           const isImg = !isVid;
           return {
             src: file.src,
@@ -277,7 +309,7 @@ export function useGallery() {
           };
         });
 
-        dispatch({ type: 'ADD_PINS', payload: pins });
+        appendPins(pins);
         loaded += files.length;
 
         dispatch({
@@ -303,7 +335,6 @@ export function useGallery() {
     fileUrls.forEach((rawUrl) => {
       const name = getFilenameFromUrl(rawUrl);
       const isVid = isVideo(name) || isVideo(rawUrl);
-      // Drive URLs automatically resolve to an image thumbnail if they aren't parsed as a video stream
       const isImg = isImage(name) || isImage(rawUrl) || isDriveUrl(rawUrl);
       const src = convertDriveUrl(rawUrl, isVid);
 
@@ -311,10 +342,7 @@ export function useGallery() {
         const video = document.createElement('video');
         video.preload = 'metadata';
         video.onloadedmetadata = () => {
-          dispatch({
-            type: 'ADD_PINS',
-            payload: [{ src, thumbSrc: src, name, size: 0, type: 'video/url', isUrl: true, isVideo: true, isImage: false, isOther: false }],
-          });
+          appendPins([{ src, thumbSrc: src, name, size: 0, type: 'video/url', isUrl: true, isVideo: true, isImage: false, isOther: false }]);
           loaded++;
           updateStatus();
         };
@@ -326,35 +354,27 @@ export function useGallery() {
           thumbSrc = src.replace('=w1600', '=w400');
         }
         const img = new Image();
-        // Only set crossOrigin for non-Drive URLs
         if (!isDriveUrl(rawUrl)) {
           img.crossOrigin = 'anonymous';
         }
         img.onload = () => {
-          dispatch({
-            type: 'ADD_PINS',
-            payload: [{ src, thumbSrc, name, size: 0, type: 'image/url', isUrl: true, isVideo: false, isImage: true, isOther: false }],
-          });
+          appendPins([{ src, thumbSrc, name, size: 0, type: 'image/url', isUrl: true, isVideo: false, isImage: true, isOther: false }]);
           loaded++;
           updateStatus();
         };
         img.onerror = () => { failed++; updateStatus(); };
         img.src = src;
       } else {
-        dispatch({
-          type: 'ADD_PINS',
-          payload: [{ src, name, size: 0, type: 'file/url', isUrl: true, isVideo: false, isImage: false, isOther: true }],
-        });
+        appendPins([{ src, name, size: 0, type: 'file/url', isUrl: true, isVideo: false, isImage: false, isOther: true }]);
         loaded++;
         updateStatus();
       }
     });
 
-    // If only folders and no file URLs, we need to wait for the async folder processing
     if (fileUrls.length === 0 && folderUrls.length === 0) {
       dispatch({ type: 'SET_URL_STATUS', payload: null });
     }
-  }, []);
+  }, [appendPins]);
 
   const setFilter = useCallback((f) => {
     dispatch({ type: 'SET_FILTER', payload: f });
@@ -363,7 +383,6 @@ export function useGallery() {
 
   const setSearch = useCallback((q) => {
     dispatch({ type: 'SET_SEARCH', payload: q });
-    // Don't scroll on every typed letter, natural search behavior
   }, []);
 
   const setSort = useCallback((s) => {
@@ -381,6 +400,8 @@ export function useGallery() {
 
   return {
     state,
+    stats,
+    pinsLength: pinsRef.current.length,
     filteredPins,
     handleFiles,
     loadFromUrls,

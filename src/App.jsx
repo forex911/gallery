@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useGallery } from './hooks/useGallery';
 import TopBar from './components/TopBar';
 import StatsBar from './components/StatsBar';
@@ -11,6 +11,8 @@ import './App.css';
 export default function App() {
   const {
     state,
+    stats,
+    pinsLength,
     filteredPins,
     handleFiles,
     loadFromUrls,
@@ -25,30 +27,22 @@ export default function App() {
   const [lightboxIndex, setLightboxIndex] = useState(-1);
   const searchTimerRef = useRef(null);
 
-  const hasPins = state.pins.length > 0;
+  const hasPins = pinsLength > 0;
 
-  // Debounced search
+  // Debounced search — fires setSearch after 200ms idle
   const handleSearch = useCallback(
     (value) => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
       searchTimerRef.current = setTimeout(() => {
         setSearch(value);
       }, 200);
-      // Update the input value immediately (uncontrolled debounce pattern)
-      // We pass the raw value to TopBar for display, but debounce the state update
     },
     [setSearch]
   );
 
-  // Stats
-  const photoCount = useMemo(() => state.pins.filter((p) => p.isImage !== false && !p.isVideo && !p.isOther).length, [state.pins]);
-  const videoCount = useMemo(() => state.pins.filter((p) => p.isVideo).length, [state.pins]);
-  const fileCount = useMemo(() => state.pins.filter((p) => p.isOther).length, [state.pins]);
-
   // Lightbox handlers
   const openLightbox = useCallback(
     (idx) => {
-      // Find position in filtered list
       const pos = filteredPins.findIndex((p) => p._idx === idx);
       setLightboxIndex(pos >= 0 ? pos : 0);
     },
@@ -86,7 +80,6 @@ export default function App() {
   return (
     <div id="app">
       <TopBar
-        search={state.search}
         onSearch={handleSearch}
         onUpload={handleFiles}
         onUrlClick={() => setUrlModalOpen(true)}
@@ -95,10 +88,10 @@ export default function App() {
 
       {hasPins && (
         <StatsBar
-          totalPins={state.pins.length}
-          photoCount={photoCount}
-          videoCount={videoCount}
-          fileCount={fileCount}
+          totalPins={stats.total}
+          photoCount={stats.photoCount}
+          videoCount={stats.videoCount}
+          fileCount={stats.fileCount}
           activeFilter={state.filter}
           onFilter={setFilter}
           activeSort={state.sort}

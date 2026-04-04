@@ -1,6 +1,11 @@
 import { useRef } from 'react';
 
-export default function TopBar({ search, onSearch, onUpload, onUrlClick, progress }) {
+/**
+ * TopBar — Uncontrolled search input for performance.
+ * The input manages its own value via the DOM (defaultValue).
+ * onChange fires the debounced onSearch callback without causing parent re-renders.
+ */
+export default function TopBar({ onSearch, onUpload, onUrlClick, progress }) {
   const fileRef = useRef(null);
 
   return (
@@ -13,7 +18,7 @@ export default function TopBar({ search, onSearch, onUpload, onUrlClick, progres
           type="text"
           id="searchInput"
           placeholder="Search photos and videos..."
-          value={search}
+          defaultValue=""
           onChange={(e) => onSearch(e.target.value)}
         />
       </div>
