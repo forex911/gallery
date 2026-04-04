@@ -5,7 +5,7 @@ export default function TopBar({ search, onSearch, onUpload, onUrlClick, progres
 
   return (
     <div className="topbar">
-      <div className="logo">Gallery</div>
+      <div className="logo">F9-Gallery</div>
 
       <div className="search-wrap">
         <span className="search-icon">S</span>
