@@ -4,18 +4,16 @@ import { fmtSize, getExt } from '../utils/helpers';
 /**
  * PinCard — Individual gallery item.
  * 
- * Critical performance fixes:
- * - Videos are LAZY: no src until hover. Shows poster/thumbnail only.
- *   This prevents 100s of video elements from downloading simultaneously.
- * - React.memo prevents re-renders from parent updates
- * - Reads savedSet/callbacks from refs (avoids prop-change re-renders)
- * - decoding="async" for non-blocking image decode
+ * Video strategy:
+ * - Always render <video preload="metadata"> — only downloads first frame + dimensions
+ * - Masonic virtualizes so only ~20-30 videos are mounted at any time (safe)
+ * - On hover: play with audio (fallback to muted if browser blocks)
+ * - On leave: pause + reset
  */
 const PinCard = memo(function PinCard({ data: pin, savedSetRef, onOpenLightboxRef, onToggleSaveRef }) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [aspectRatio, setAspectRatio] = useState(pin.isOther ? 1 : 4/3);
-  const [videoActive, setVideoActive] = useState(false); // Only load video src on hover
   const videoRef = useRef(null);
 
   const isSaved = !!(savedSetRef.current[pin._idx]);
@@ -29,29 +27,28 @@ const PinCard = memo(function PinCard({ data: pin, savedSetRef, onOpenLightboxRe
     onToggleSaveRef.current(pin._idx);
   }, [pin._idx, onToggleSaveRef]);
 
-  // Video: set src and play ONLY on hover
+  // Play with audio on hover — fallback to muted if browser blocks
   const handleMouseEnter = useCallback(() => {
-    if (pin.isVideo) {
-      setVideoActive(true);
-      // Need a small delay for the src to be set before playing
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (videoRef.current) {
+    if (videoRef.current) {
+      videoRef.current.muted = false;
+      const playPromise = videoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          if (err.name === 'NotAllowedError' && videoRef.current) {
             videoRef.current.muted = true;
             videoRef.current.play().catch(() => {});
           }
         });
-      });
+      }
     }
-  }, [pin.isVideo]);
+  }, []);
 
   const handleMouseLeave = useCallback(() => {
     if (videoRef.current) {
       videoRef.current.pause();
-      videoRef.current.removeAttribute('src');
-      videoRef.current.load(); // Release the media resource
+      videoRef.current.currentTime = 0;
+      videoRef.current.muted = true;
     }
-    setVideoActive(false);
   }, []);
 
   const handleImgLoad = useCallback((e) => {
@@ -86,28 +83,16 @@ const PinCard = memo(function PinCard({ data: pin, savedSetRef, onOpenLightboxRe
       <div className="pin-media-wrap" style={{ aspectRatio }}>
         {pin.isVideo ? (
           <>
-            {/* Show thumbnail image by default; only mount video element on hover */}
-            {!videoActive ? (
-              <img
-                src={pin.thumbSrc || pin.src}
-                alt={pin.name}
-                loading="lazy"
-                decoding="async"
-                className="pin-img loaded"
-                style={{ background: '#000' }}
-              />
-            ) : (
-              <video
-                ref={videoRef}
-                src={pin.src}
-                muted
-                loop
-                playsInline
-                preload="auto"
-                onLoadedMetadata={handleVideoLoad}
-                style={{ background: '#000' }}
-              />
-            )}
+            <video
+              ref={videoRef}
+              src={pin.src}
+              poster={pin.thumbSrc && pin.thumbSrc !== pin.src ? pin.thumbSrc : undefined}
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              onLoadedMetadata={handleVideoLoad}
+            />
             <div className="pin-badge">Video</div>
           </>
         ) : pin.isOther ? (
