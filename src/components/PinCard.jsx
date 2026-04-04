@@ -18,13 +18,26 @@ const PinCard = memo(function PinCard({ data: pin, onOpenLightbox, onToggleSave,
 
 
   const handleMouseEnter = useCallback(() => {
-    if (videoRef.current) videoRef.current.play().catch(() => {});
+    if (videoRef.current) {
+      videoRef.current.muted = false; // Attempt to play with audio
+      const playPromise = videoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          // If playback with audio is blocked by the browser, fallback to muted
+          if (err.name === 'NotAllowedError') {
+            videoRef.current.muted = true;
+            videoRef.current.play().catch(() => {});
+          }
+        });
+      }
+    }
   }, []);
 
   const handleMouseLeave = useCallback(() => {
     if (videoRef.current) {
       videoRef.current.pause();
       videoRef.current.currentTime = 0;
+      videoRef.current.muted = true; // reset
     }
   }, []);
 
