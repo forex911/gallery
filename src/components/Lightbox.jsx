@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { fmtSize } from '../utils/helpers';
 
@@ -8,6 +8,7 @@ import { fmtSize } from '../utils/helpers';
  */
 export default function Lightbox({ pins, currentIndex, onClose, onNavigate }) {
   const wrapRef = useRef(null);
+  const [isZoomed, setIsZoomed] = useState(false);
 
   const pin = pins[currentIndex];
   if (!pin) return null;
@@ -15,8 +16,10 @@ export default function Lightbox({ pins, currentIndex, onClose, onNavigate }) {
   const total = pins.length;
   const displayIdx = currentIndex + 1;
 
-  // Keyboard navigation
+  // Keyboard navigation and zoom reset
   useEffect(() => {
+    setIsZoomed(false);
+    
     function handleKey(e) {
       if (e.key === 'Escape') onClose();
       else if (e.key === 'ArrowLeft') onNavigate(-1);
@@ -24,7 +27,12 @@ export default function Lightbox({ pins, currentIndex, onClose, onNavigate }) {
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose, onNavigate]);
+  }, [currentIndex, onClose, onNavigate]);
+
+  const handleDoubleClick = useCallback((e) => {
+    e.stopPropagation();
+    setIsZoomed(prev => !prev);
+  }, []);
 
   const handleBackdropClick = useCallback(
     (e) => {
@@ -62,11 +70,20 @@ export default function Lightbox({ pins, currentIndex, onClose, onNavigate }) {
               autoPlay
               style={{ maxWidth: '88vw', maxHeight: '80vh' }}
             />
+          ) : pin.isOther ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+              <div style={{ fontSize: '64px', marginBottom: '20px' }}>📄</div>
+              <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>{pin.name}</h2>
+              <p style={{ fontSize: '13px', marginTop: '8px' }}>Cannot preview this file type in the browser.</p>
+            </div>
           ) : (
             <img
               key={pin.src}
               src={pin.src}
               alt={pin.name}
+              className={isZoomed ? 'zoomed' : ''}
+              onDoubleClick={handleDoubleClick}
+              title="Double-click to zoom"
             />
           )}
         </div>

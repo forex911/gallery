@@ -298,10 +298,10 @@ export function useGallery() {
 
     // ─── Process individual file URLs ───
     fileUrls.forEach((rawUrl) => {
-      const src = convertDriveUrl(rawUrl);
       const name = getFilenameFromUrl(rawUrl);
       const isVid = isVideo(name) || isVideo(rawUrl);
       const isImg = isImage(name) || isImage(rawUrl);
+      const src = convertDriveUrl(rawUrl, isVid);
 
       if (isVid) {
         const video = document.createElement('video');
@@ -350,14 +350,17 @@ export function useGallery() {
 
   const setFilter = useCallback((f) => {
     dispatch({ type: 'SET_FILTER', payload: f });
+    window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
 
   const setSearch = useCallback((q) => {
     dispatch({ type: 'SET_SEARCH', payload: q });
+    // Don't scroll on every typed letter, natural search behavior
   }, []);
 
   const setSort = useCallback((s) => {
     dispatch({ type: 'SET_SORT', payload: s });
+    window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
 
   const toggleSave = useCallback((idx) => {

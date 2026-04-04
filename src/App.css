@@ -572,6 +572,16 @@ body {
   display: block;
 }
 
+.lb-media-wrap img {
+  cursor: zoom-in;
+}
+
+.lb-media-wrap img.zoomed {
+  max-width: none;
+  max-height: none;
+  cursor: zoom-out;
+}
+
 .lb-footer {
   padding: 16px 24px; width: 100%;
   display: flex; align-items: center; justify-content: space-between;

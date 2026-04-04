@@ -44,14 +44,21 @@ export function escHtml(s) {
 /**
  * Convert Google Drive share URLs to direct download/view links.
  */
-export function convertDriveUrl(url) {
+export function convertDriveUrl(url, isVideoFile = false) {
   url = url.trim();
+  
+  const constructUrl = (id) => {
+    return isVideoFile 
+      ? `https://drive.google.com/uc?export=view&id=${id}` 
+      : driveDirectUrl(id);
+  };
+
   let match = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
-  if (match) return driveDirectUrl(match[1]);
+  if (match) return constructUrl(match[1]);
   match = url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/);
-  if (match) return driveDirectUrl(match[1]);
+  if (match) return constructUrl(match[1]);
   match = url.match(/drive\.google\.com\/uc\?.*id=([a-zA-Z0-9_-]+)/);
-  if (match) return driveDirectUrl(match[1]);
+  if (match) return constructUrl(match[1]);
   return url;
 }
 
@@ -162,6 +169,11 @@ export async function fetchDriveFolderFiles(folderId) {
       while ((m = tooltipPattern.exec(html)) !== null && nameIdx < files.length) {
         if (m[1] && !m[1].startsWith('http')) {
           files[nameIdx].name = m[1];
+          // If we detect it's a video, change the URL to the video streaming endpoint
+          // because lh3 proxy only serves static image thumbnails for videos.
+          if (isVideo(m[1])) {
+            files[nameIdx].src = `https://drive.google.com/uc?export=view&id=${files[nameIdx].id}`;
+          }
           nameIdx++;
         }
       }
