@@ -36,12 +36,19 @@ const PinCard = memo(function PinCard({ data: pin, savedSetRef, onOpenLightboxRe
   const videoRef = useRef(null);
   const isSaved = !!(savedSetRef.current[pin._idx]);
 
-  // Update thumbSrc if activeSrc becomes available and no cache exists
+  // Sync thumbSrc when activeSrc or pin.thumbUrl becomes available
+  // This handles both first-time mounts and remounts with cached thumbnails
   useEffect(() => {
-    if (!pin.isVideo && !pin.thumbUrl && activeSrc) {
-      setThumbSrc(activeSrc);
+    if (pin.isVideo) return; // Videos handle their own thumbnail generation
+    
+    // Priority: pin.thumbUrl (cached) > activeSrc (current source)
+    const targetSrc = pin.thumbUrl || activeSrc;
+    
+    // Only update if we have a valid source and it's different from current
+    if (targetSrc && targetSrc !== thumbSrc) {
+      setThumbSrc(targetSrc);
     }
-  }, [activeSrc, pin.isVideo, pin.thumbUrl]);
+  }, [activeSrc, pin.isVideo, pin.thumbUrl, thumbSrc]);
 
   useEffect(() => {
     setImgError(false);
@@ -84,6 +91,7 @@ const PinCard = memo(function PinCard({ data: pin, savedSetRef, onOpenLightboxRe
   }, [activeSrc, pin.name]);
 
   // Generate thumbnail for videos and images on mount
+  // Optimized for 3000+ files: only generates if not cached
   useEffect(() => {
     if (!activeSrc) return;
     let isMounted = true;
@@ -113,7 +121,7 @@ const PinCard = memo(function PinCard({ data: pin, savedSetRef, onOpenLightboxRe
           canvas.width = Math.min(tempVid.videoWidth, 400);
           canvas.height = canvas.width / ratio;
           
-          const ctx = canvas.getContext('2d');
+          const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: false });
           ctx.drawImage(tempVid, 0, 0, canvas.width, canvas.height);
           
           const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
@@ -147,7 +155,7 @@ const PinCard = memo(function PinCard({ data: pin, savedSetRef, onOpenLightboxRe
           const canvas = document.createElement('canvas');
           canvas.width = bmp.width;
           canvas.height = bmp.height;
-          const ctx = canvas.getContext('2d');
+          const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: false });
           ctx.drawImage(bmp, 0, 0);
           
           const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
@@ -155,7 +163,7 @@ const PinCard = memo(function PinCard({ data: pin, savedSetRef, onOpenLightboxRe
           if (isMounted) setThumbSrc(dataUrl);
           
           bmp.close();
-        } catch (err) {
+        } catch {
           if (isMounted) {
             pin.thumbUrl = activeSrc;
             setThumbSrc(activeSrc);
@@ -222,7 +230,7 @@ const PinCard = memo(function PinCard({ data: pin, savedSetRef, onOpenLightboxRe
       const playPromise = videoRef.current.play();
       
       if (playPromise !== undefined) {
-        playPromise.catch((err) => {
+        playPromise.catch(() => {
            // ignored
         });
       }

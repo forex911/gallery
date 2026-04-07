@@ -69,8 +69,9 @@ export default function GalleryGrid({ filteredPins, savedSet, onOpenLightbox, on
         render={renderItem}
         columnGutter={gridConfig.columnGutter}
         columnWidth={gridConfig.columnWidth}
-        overscanBy={2}
+        overscanBy={3}
         role="grid"
+        tabIndex={0}
       />
     </div>
   );

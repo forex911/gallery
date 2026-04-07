@@ -35,3 +35,18 @@ dist-ssr
 # OS files
 .DS_Store
 Thumbs.db
+
+# Testing
+*.test.js
+*.test.jsx
+*.test.ts
+*.test.tsx
+*.spec.js
+*.spec.jsx
+*.spec.ts
+*.spec.tsx
+src/test/
+coverage/
+
+# Kiro specs
+.kiro/specs/

@@ -92,17 +92,32 @@ export function useGallery() {
 
   // ─── Filtered + Searched + Sorted pins (memoized) ───
   // Pin objects already have `id` and `_idx` set at creation — NO mapping needed
+  // Optimized for 3000+ files: early exit, single-pass filtering
   const filteredPins = useMemo(() => {
     const pins = pinsRef.current;
     const { filter, search, sort } = state;
     const q = search.toLowerCase();
 
-    let result = pins.filter((pin) => {
-      const ext = getExt(pin.name);
-      const matchFilter = filter === 'all' || ext === filter;
-      const matchSearch = !q || pin.name.toLowerCase().includes(q);
-      return matchFilter && matchSearch;
-    });
+    // Early exit for empty gallery
+    if (pins.length === 0) return [];
+
+    let result = pins;
+
+    // Apply filters only if needed (avoid unnecessary work)
+    if (filter !== 'all' || q) {
+      result = [];
+      for (let i = 0, len = pins.length; i < len; i++) {
+        const pin = pins[i];
+        const ext = getExt(pin.name);
+        const matchFilter = filter === 'all' || ext === filter;
+        if (!matchFilter) continue;
+        
+        const matchSearch = !q || pin.name.toLowerCase().includes(q);
+        if (matchSearch) {
+          result.push(pin);
+        }
+      }
+    }
 
     switch (sort) {
       case 'name-asc':
@@ -116,7 +131,7 @@ export function useGallery() {
         );
         break;
       case 'random':
-        result = shuffleArray(result);
+        result = shuffleArray(result.slice());
         break;
       default:
         break;
