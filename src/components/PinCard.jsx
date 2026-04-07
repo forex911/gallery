@@ -43,6 +43,11 @@ const PinCard = memo(function PinCard({ data: pin, savedSetRef, onOpenLightboxRe
     }
   }, [activeSrc, pin.isVideo, pin.thumbUrl]);
 
+  useEffect(() => {
+    setImgError(false);
+    setImgLoaded(false);
+  }, [thumbSrc]);
+
   const handleClick = useCallback(() => {
     onOpenLightboxRef.current(pin._idx);
   }, [pin._idx, onOpenLightboxRef]);
@@ -78,7 +83,7 @@ const PinCard = memo(function PinCard({ data: pin, savedSetRef, onOpenLightboxRe
     document.body.removeChild(link);
   }, [activeSrc, pin.name]);
 
-  // Generate thumbnail for videos on mount to avoid rendering black <video> boxes
+  // Generate thumbnail for videos and images on mount
   useEffect(() => {
     if (!activeSrc) return;
     let isMounted = true;
@@ -93,7 +98,6 @@ const PinCard = memo(function PinCard({ data: pin, savedSetRef, onOpenLightboxRe
       tempVid.crossOrigin = 'anonymous';
 
       tempVid.onloadeddata = () => {
-        // Seek to 0.5s to get a frame past black screens
         tempVid.currentTime = Math.min(0.5, tempVid.duration / 2 || 0);
       };
 
@@ -101,31 +105,26 @@ const PinCard = memo(function PinCard({ data: pin, savedSetRef, onOpenLightboxRe
         if (!isMounted) return;
         const ratio = tempVid.videoWidth / tempVid.videoHeight || 4/3;
         
-        // Persist ratio immediately to prevent jitter
         pin.aspectRatio = ratio;
         setAspectRatio(ratio);
 
         try {
           const canvas = document.createElement('canvas');
-          // Scale to max 400px for low quality performance 
           canvas.width = Math.min(tempVid.videoWidth, 400);
           canvas.height = canvas.width / ratio;
           
           const ctx = canvas.getContext('2d');
           ctx.drawImage(tempVid, 0, 0, canvas.width, canvas.height);
           
-          // Generate low quality JPEG
           const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
           
           pin.thumbUrl = dataUrl;
-          setThumbSrc(dataUrl);
+          if (isMounted) setThumbSrc(dataUrl);
         } catch (err) {
-          // Fallback if cross-origin canvas is blocked
           pin.thumbUrl = activeSrc;
-          setThumbSrc(activeSrc);
+          if (isMounted) setThumbSrc(activeSrc);
         }
 
-        // Extremely important: Free up memory
         tempVid.removeAttribute('src');
         tempVid.load();
         tempVid = null;
@@ -135,6 +134,35 @@ const PinCard = memo(function PinCard({ data: pin, savedSetRef, onOpenLightboxRe
         if (!isMounted) return;
         setImgError(true);
       };
+    } else if (pin.isImage && !pin.thumbUrl && pin.sourceType === 'local') {
+      const generateImageThumb = async () => {
+        try {
+          const bmp = await createImageBitmap(pin.file, { resizeWidth: 400, resizeQuality: 'low' });
+          if (!isMounted) { bmp.close(); return; }
+
+          const ratio = bmp.width / bmp.height;
+          pin.aspectRatio = ratio;
+          setAspectRatio(ratio);
+
+          const canvas = document.createElement('canvas');
+          canvas.width = bmp.width;
+          canvas.height = bmp.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(bmp, 0, 0);
+          
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+          pin.thumbUrl = dataUrl;
+          if (isMounted) setThumbSrc(dataUrl);
+          
+          bmp.close();
+        } catch (err) {
+          if (isMounted) {
+            pin.thumbUrl = activeSrc;
+            setThumbSrc(activeSrc);
+          }
+        }
+      };
+      generateImageThumb();
     }
 
     return () => {
