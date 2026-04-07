@@ -76,13 +76,12 @@ export function useGallery() {
   const [state, dispatch] = useReducer(galleryReducer, initialState);
   
   const pinsRef = useRef([]);
-  const objectUrlsRef = useRef([]);
   const shuffleSeedRef = useRef(null);
+  const seenSignaturesRef = useRef(new Set());
+  const seenUrlsRef = useRef(new Set());
 
   useEffect(() => {
-    return () => {
-      objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-    };
+    // Cleanup any loose global resources if needed globally, but ObjectURLs are managed per component now.
   }, []);
 
   useEffect(() => {
@@ -172,19 +171,26 @@ export function useGallery() {
 
       for (let i = start; i < end; i++) {
         const file = media[i];
-        const url = URL.createObjectURL(file);
-        objectUrlsRef.current.push(url);
+        
+        // Exact Duplicate Checking: Ignore files with same signature
+        const signature = `${file.name}-${file.size}-${file.lastModified}`;
+        if (seenSignaturesRef.current.has(signature)) {
+          continue; // Skip silently
+        }
+        seenSignaturesRef.current.add(signature);
+        
         const isVid = file.type.startsWith('video/') || isVideo(file.name);
         const isImg = file.type.startsWith('image/') || isImage(file.name);
+        
         batch.push({
-          src: url,
+          file, 
+          sourceType: 'local',
           name: file.name,
           size: file.size,
           type: file.type,
           isVideo: isVid,
           isImage: isImg,
           isOther: !isVid && !isImg,
-          isUrl: false,
         });
         loaded++;
       }
@@ -216,8 +222,17 @@ export function useGallery() {
       .filter((l) => l.length > 0);
     if (!urls.length) return;
 
-    const folderUrls = urls.filter(isDriveFolderUrl);
-    const fileUrls = urls.filter((u) => !isDriveFolderUrl(u));
+    const folderUrls = urls.filter(isDriveFolderUrl).filter(u => {
+      if (seenUrlsRef.current.has(u)) return false;
+      seenUrlsRef.current.add(u);
+      return true;
+    });
+    
+    const fileUrls = urls.filter((u) => !isDriveFolderUrl(u)).filter(u => {
+      if (seenUrlsRef.current.has(u)) return false;
+      seenUrlsRef.current.add(u);
+      return true;
+    });
 
     let totalExpected = fileUrls.length + (folderUrls.length > 0 ? 1 : 0);
     let loaded = 0;
@@ -276,13 +291,14 @@ export function useGallery() {
 
         const pins = files.map((file) => {
           const isVid = isVideo(file.name);
+          if (file.id) seenUrlsRef.current.add(file.id);
           return {
-            src: file.src,
-            thumbSrc: file.thumbSrc || file.src,
+            url: file.src,
+            thumbUrl: file.thumbSrc || file.src,
+            sourceType: "remote",
             name: file.name,
             size: 0,
             type: isVid ? 'video/url' : 'image/url',
-            isUrl: true,
             isVideo: isVid,
             isImage: !isVid,
             isOther: false,
@@ -310,29 +326,36 @@ export function useGallery() {
       const src = convertDriveUrl(rawUrl, isVid);
 
       if (isVid) {
-        const video = document.createElement('video');
-        video.preload = 'metadata';
-        video.onloadedmetadata = () => {
-          appendPins([{ src, thumbSrc: src, name, size: 0, type: 'video/url', isUrl: true, isVideo: true, isImage: false, isOther: false }]);
+        if (isDriveUrl(rawUrl)) {
+          // Drive videos cannot be preloaded via <video> because the URL points to a player/page.
+          // Add them immediately.
+          appendPins([{ url: src, thumbUrl: null, name, size: 0, type: 'video/url', sourceType: 'remote', isVideo: true, isImage: false, isOther: false }]);
           loaded++; updateStatus();
-        };
-        video.onerror = () => { failed++; updateStatus(); };
-        video.src = src;
+        } else {
+          const video = document.createElement('video');
+          video.preload = 'metadata';
+          video.onloadedmetadata = () => {
+            appendPins([{ url: src, thumbUrl: src, name, size: 0, type: 'video/url', sourceType: 'remote', isVideo: true, isImage: false, isOther: false }]);
+            loaded++; updateStatus();
+          };
+          video.onerror = () => { failed++; updateStatus(); };
+          video.src = src;
+        }
       } else if (isImg) {
-        let thumbSrc = src;
+        let thumbUrl = src;
         if (src.includes('lh3.googleusercontent.com')) {
-          thumbSrc = src.replace('=w1600', '=w400');
+          thumbUrl = src.replace('=w1600', '=w400');
         }
         const img = new Image();
         if (!isDriveUrl(rawUrl)) { img.crossOrigin = 'anonymous'; }
         img.onload = () => {
-          appendPins([{ src, thumbSrc, name, size: 0, type: 'image/url', isUrl: true, isVideo: false, isImage: true, isOther: false }]);
+          appendPins([{ url: src, thumbUrl, name, size: 0, type: 'image/url', sourceType: 'remote', isVideo: false, isImage: true, isOther: false }]);
           loaded++; updateStatus();
         };
         img.onerror = () => { failed++; updateStatus(); };
         img.src = src;
       } else {
-        appendPins([{ src, name, size: 0, type: 'file/url', isUrl: true, isVideo: false, isImage: false, isOther: true }]);
+        appendPins([{ url: src, name, size: 0, type: 'file/url', sourceType: 'remote', isVideo: false, isImage: false, isOther: true }]);
         loaded++; updateStatus();
       }
     });
